@@ -1,64 +1,162 @@
-/**
-* author - amannirala13 (modifié avec des améliorations)
-* github - https://www.github.com/amannirala13
-* 
-* Ce script doit être exécuté dans la console des développeurs. Il récupère l'adresse IP
-* des clients Omegle utilisant WebRTC, puis utilise l'API BigDataCloud
-* pour obtenir des informations géographiques détaillées.
-*/
+// ==UserScript==
+// @name         Bazoocam WebRTC Tracker with VPN/Proxy Detection
+// @namespace    http://tampermonkey.net/
+// @version      2.6
+// @description  Capture les connexions WebRTC sur Bazoocam.org, affiche les données IP, détecte les périphériques et vérifie si un VPN ou un proxy est utilisé.
+// @author       exploit1337_
+// @match        *://*.bazoocam.org/*
+// @grant        GM_addStyle
+// ==/UserScript==
 
-window.oRTCPeerConnection = window.oRTCPeerConnection || window.RTCPeerConnection;
-window.RTCPeerConnection = function (...args) {
-    const pc = new window.oRTCPeerConnection(...args);
-    pc.oaddIceCandidate = pc.addIceCandidate;
-    pc.addIceCandidate = function (iceCandidate, ...rest) {
-        const fields = iceCandidate.candidate.split(' ');
-        if (fields[7] === 'srflx') {
-            getLocation(fields[4]); // Récupère l'adresse IP détectée
-        }
-        return pc.oaddIceCandidate(iceCandidate, ...rest);
+(function () {
+    'use strict';
+
+    // Injection du script WebRTC dans la page
+    const script = document.createElement("script");
+    script.textContent = `
+        (function() {
+            console.log("WebRTC Script Injected");
+
+            // Vérifie la disponibilité du microphone et de la caméra
+            navigator.mediaDevices.enumerateDevices().then(devices => {
+                let hasMicrophone = false;
+                let hasCamera = false;
+
+                devices.forEach(device => {
+                    if (device.kind === "audioinput") {
+                        hasMicrophone = true;
+                    }
+                    if (device.kind === "videoinput") {
+                        hasCamera = true;
+                    }
+                });
+
+                // Envoi des informations sur les périphériques à la page
+                window.dispatchEvent(new CustomEvent("device-status-detected", {
+                    detail: { hasMicrophone, hasCamera }
+                }));
+            });
+
+            window.oRTCPeerConnection = window.oRTCPeerConnection || window.RTCPeerConnection;
+            window.RTCPeerConnection = function (...args) {
+                const pc = new window.oRTCPeerConnection(...args);
+                pc.oaddIceCandidate = pc.addIceCandidate;
+                pc.addIceCandidate = function (iceCandidate, ...rest) {
+                    const fields = iceCandidate.candidate.split(' ');
+                    if (fields[7] === 'srflx') {
+                        const ip = fields[4];
+                        console.log("Captured IP:", ip);
+
+                        // Envoi des données IP à la page
+                        window.dispatchEvent(new CustomEvent("webrtc-ip-detected", { detail: ip }));
+                    }
+                    return pc.oaddIceCandidate(iceCandidate, ...rest);
+                };
+                return pc;
+            };
+        })();
+    `;
+    document.documentElement.appendChild(script);
+
+    // UI pour afficher les informations capturées
+    const uiBox = document.createElement("div");
+    uiBox.id = "geoInfoBox";
+    uiBox.innerHTML = `
+        <div style="
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.95);
+            color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            max-width: 300px;
+        ">
+            <h4 style="margin-top: 0; text-align: center;">Bazoocam Tracker avec Détection VPN/Proxy</h4>
+            <div id="geoInfo">
+                <p style="margin: 10px 0;">Connectez-vous à une personne pour voir ses données IP.</p>
+            </div>
+            <div id="deviceInfo" style="margin-top: 10px;">
+                <p>Détection des périphériques...</p>
+            </div>
+            <div id="vpnProxyInfo" style="margin-top: 10px;">
+                <p>Détection VPN/Proxy...</p>
+            </div>
+            <button id="clearLogs" style="
+                width: 100%;
+                background: #ff4f4f;
+                color: white;
+                border: none;
+                padding: 8px 12px;
+                border-radius: 5px;
+                margin-top: 10px;
+                cursor: pointer;
+            ">Effacer les Logs</button>
+        </div>
+    `;
+    document.body.appendChild(uiBox);
+
+    // Effacement des logs
+    document.getElementById("clearLogs").onclick = function () {
+        document.getElementById("geoInfo").innerHTML = "<p>Connectez-vous à une personne pour voir ses données IP.</p>";
+        document.getElementById("deviceInfo").innerHTML = "<p>Détection des périphériques...</p>";
+        document.getElementById("vpnProxyInfo").innerHTML = "<p>Détection VPN/Proxy...</p>";
     };
-    return pc;
-};
 
-async function getLocation(ip) {
-    const requestOptions = {
-        method: 'GET',
-        redirect: 'follow'
-    };
+    // Écoute des événements pour afficher les données IP
+    window.addEventListener("webrtc-ip-detected", function (event) {
+        const ip = event.detail;
+        console.log("IP Capturée :", ip);
+        updateGeoInfo(ip);
+    });
 
-    /*
-    OBTENEZ UNE CLÉ API GRATUITE ICI --> (https://www.bigdatacloud.com/)
-    INSÉREZ LA CLÉ API DANS [YOUR_API_KEY_HERE]
-    */
-    fetch(`https://api.bigdatacloud.net/data/ip-geolocation-full?ip=${ip}&localityLanguage=en&key=[YOUR_API_KEY_HERE]`, requestOptions)
-        .then(response => response.json())
-        .then(result => {
-            console.log("~~~~~~~~~~~~~~~~~~~~~~~");
-            console.log("||||||||| GEO DATA |||||||||");
-            console.log("~~~~~~~~~~~~~~~~~~~~~~~");
-            console.log('IP Address:', ip);
-            console.log("-----------------------");
-            console.log("Country: ", result.country.name);
-            console.log("Subdivision (Region): ", result.location.subdivision.name);
-            console.log("City: ", result.location.locality);
-            console.log("Latitude: ", result.location.latitude);
-            console.log("Longitude: ", result.location.longitude);
-            console.log("-----------------------");
-            console.log("Network Name: ", result.network.organisation);
-            console.log("Autonomous System (AS): ", result.network.asn);
-            console.log("ISP: ", result.network.name);
-            console.log("-----------------------");
-            console.log("Connection Type: ", result.connectionType.type);
-            console.log("Connection Confidence: ", result.connectionType.confidence);
-            console.log("-----------------------");
-            console.log("Timezone: ", result.location.timeZone.name);
-            console.log("Offset (GMT): ", result.location.timeZone.gmtOffset);
-            console.log("-----------------------");
-            console.log("Confidence Level: ", result.confidence);
-            console.log("-----------------------");
-            console.log("Continent: ", result.continent.name);
-            console.log("Location Accuracy Radius (in km): ", result.accuracy.radius);
-        })
-        .catch(error => console.log('Erreur lors de la récupération des données :', error));
-}
+    // Écoute des événements pour afficher les informations sur les périphériques
+    window.addEventListener("device-status-detected", function (event) {
+        const { hasMicrophone, hasCamera } = event.detail;
+        console.log("Statut des périphériques détecté :", { hasMicrophone, hasCamera });
+
+        const deviceInfo = `
+            <b>Has Microphone:</b> ${hasMicrophone ? "Yes" : "No"}<br>
+            <b>Has Camera:</b> ${hasCamera ? "Yes" : "No"}<br>
+        `;
+        document.getElementById("deviceInfo").innerHTML = deviceInfo;
+    });
+
+    // Fonction pour mettre à jour les informations IP (et vérifier VPN/Proxy)
+    async function updateGeoInfo(ip) {
+        fetch(`https://ipinfo.io/${ip}/geo`)
+            .then(response => response.json())
+            .then(result => {
+                // Vérification VPN/Proxy basée sur les données de l'ISP
+                let isVpnProxy = false;
+                if (result.org && (result.org.includes("VPN") || result.org.includes("Proxy"))) {
+                    isVpnProxy = true;
+                }
+
+                const info = `
+                    <b>IP Adresse :</b> ${ip}<br>
+                    <b>Pays :</b> ${result.country || "Non disponible"}<br>
+                    <b>Région :</b> ${result.region || "Non disponible"}<br>
+                    <b>Ville :</b> ${result.city || "Non disponible"}<br>
+                    <b>Latitude, Longitude :</b> ${result.loc || "Non disponible"}<br>
+                    <b>Organisation :</b> ${result.org || "Non disponible"}<br>
+                    <b>Fuseau Horaire :</b> ${result.timezone || "Non disponible"}<br>
+                `;
+                document.getElementById("geoInfo").innerHTML = info;
+
+                const vpnProxyInfo = `
+                    <b>VPN/Proxy Détecté:</b> ${isVpnProxy ? "Yes" : "No"}<br>
+                `;
+                document.getElementById("vpnProxyInfo").innerHTML = vpnProxyInfo;
+            })
+            .catch(error => {
+                console.error("Erreur lors de la récupération des données IP :", error);
+                document.getElementById("geoInfo").innerHTML = `<span style="color: red;">Erreur de récupération des données pour l'IP : ${ip}</span>`;
+            });
+    }
+})();
+
