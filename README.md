@@ -10,7 +10,7 @@ D’un navigateur moderne compatible (Chrome, Firefox, Edge, etc.).
 De l’extension Tampermonkey installée sur votre navigateur.
 
 # 🖥️ Comment installer Tampermonkey
-Téléchargez et installez Tampermonkey :
+- Téléchargez et installez Tampermonkey :
 
 Rendez-vous sur le site officiel de Tampermonkey.
 
